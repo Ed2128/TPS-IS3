@@ -134,3 +134,4 @@ public class InscripcionResponseDTO {
 * **Test de Seguridad:** Verificar que endpoint virtual rechace usuarios sin rol PARTICIPANTE (HTTP 403); endpoint manual requiera ADMIN.
 * **Test de Validación:** Enviar request con email inválido y verificar Bean Validation errores (ej. 400 con detalles).
 * **Test E2E:** En frontend, iniciar inscripción virtual, confirmar, y verificar en admin la lista; probar carga manual y descarga de certificado posterior.
+.
