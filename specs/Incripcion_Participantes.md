@@ -135,3 +135,4 @@ public class InscripcionResponseDTO {
 * **Test de Validación:** Enviar request con email inválido y verificar Bean Validation errores (ej. 400 con detalles).
 * **Test E2E:** En frontend, iniciar inscripción virtual, confirmar, y verificar en admin la lista; probar carga manual y descarga de certificado posterior.
 .
+## Desarrollo finalizado y verificado
