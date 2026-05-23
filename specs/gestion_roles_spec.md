@@ -12,6 +12,7 @@ Como **Administrador**, quiero **asignar el rol de Disertante u Organizador a un
 * El endpoint de modificación de roles debe ser accesible únicamente para usuarios con perfil administrador.
 * El sistema debe actualizar el rol del usuario de forma persistente.
 * El cambio debe verse reflejado en las autorizaciones del usuario en su próxima interacción con el sistema.
+* El sistema debe prevenir ataques de "Broken Access Control" validando el rol del solicitante en el backend en cada petición, y no depender únicamente de ocultar elementos en la interfaz de Next.js.
 
 ## 3. Requisitos Funcionales y Reglas de Negocio
 
@@ -20,11 +21,11 @@ Como **Administrador**, quiero **asignar el rol de Disertante u Organizador a un
 
 ## 4. Restricciones técnicas específicas de este módulo
 
-* **Seguridad:** Implementar Spring Security para interceptar la ruta de actualización y requerir explícitamente el rol `ADMIN`.
+* **Seguridad:** Implementar Spring Security para interceptar la ruta de actualización y requerir explícitamente el rol `ADMIN` mediante anotaciones @PreAuthorize.
 * **Arquitectura:** Respetar la separación por capas mediante `UsuarioController`, `UsuarioService` y `UsuarioRepository`.
 * **Manejo de Errores:** En caso de que un usuario no autorizado intente acceder, el `GlobalExceptionHandler` debe gestionar la respuesta y retornar un HTTP 403 Forbidden.
 * **Base de Datos:** El rol se almacenará en la columna `rol` de la tabla `usuarios`, mapeado preferentemente como un Enum de Java.
-
+* **Prevención Inyección de Datos:** Prevenir la vulnerabilidad de Asignación Masiva (Mass Assignment) asegurando que el UsuarioUpdateDTO solo exponga el campo 'rol' y no permita alterar contraseñas o IDs en la misma petición.
 ## 5. Modelo de datos de este módulo
 
 ```java
