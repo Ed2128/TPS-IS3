@@ -12,7 +12,8 @@ Este módulo regula el proceso por el cual un usuario se registra en un evento. 
 **Criterios de Aceptación:**
 - **Caso Exitoso:** Si hay cupo y la fecha actual es anterior a la fecha límite, registrar la inscripción con estado "CONFIRMADA".
 - **Caso Cupo Lleno:** Si el número de inscritos es igual al `cupo_maximo`, el sistema debe rechazar la solicitud con un mensaje de error[cite: 2].
-- **Caso Fecha Excedida:** Si la fecha actual es posterior a `fecha_limite_inscripcion`, la operación se rechaza[cite: 2].
+- **Caso Fecha Excedida:** Si la fecha actual es posterior a `fecha_limite_inscripcion`, la operación se rechaza.
+- **Control de Seguridad (OWASP - Broken Access Control & Mass Assignment):** El sistema debe validar que el ID del usuario que solicita la inscripción coincida exactamente con el ID del usuario autenticado en el token JWT (a excepción de los roles ADMINISTRADOR o STAFF). Se debe mitigar el riesgo de asignación masiva bloqueando cualquier intento de alterar campos sensibles (como el estado de la inscripción) desde el cuerpo de la petición (DTO de entrada restrictivo).
 
 ## 3. Requisitos Funcionales y Reglas de Negocio
 - **RF-01:** Validar existencia del usuario y del evento antes de procesar.
@@ -23,6 +24,8 @@ Este módulo regula el proceso por el cual un usuario se registra en un evento. 
 - **Framework:** Spring Boot 3.x.
 - **Seguridad:** Solo usuarios con rol `PARTICIPANTE` pueden acceder al endpoint de inscripción.
 - **Validación:** Usar anotaciones `@Min` y `@NotNull` en los modelos
+- **Seguridad y Validación (Mitigación R3):** Forzar la validación de autorización a nivel de método en Spring Security utilizando `@PreAuthorize("hasAnyRole('PARTICIPANTE', 'ADMIN', 'STAFF')")`. Queda estrictamente prohibido delegar la seguridad de la inscripción únicamente al filtrado de vistas del frontend en Next.js.
+- **Filtro de Datos de Entrada:** Implementar DTOs separados para la creación de inscripciones (`InscripcionCreateDTO`), garantizando que solo se exponga el campo `eventoId`. El sistema debe rechazar peticiones con campos excedentes para evitar inyecciones de parámetros.
 
 ## 5. Modelo de Datos
 Entidad `Inscripcion`:

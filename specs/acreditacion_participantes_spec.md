@@ -14,6 +14,7 @@ Este módulo gestiona el registro de asistencia en tiempo real durante el evento
 - **Estado Duplicado:** Si un usuario ya ha sido acreditado, el sistema debe mostrar un aviso indicando la hora de la primera acreditación y no duplicar el registro.
 - **Feedback Visual:** Al realizar la acreditación exitosa, debe mostrar los datos principales del participante (Nombre, DNI/ID y Tipo de Participante).
 
+- **Control de Seguridad (OWASP - IDOR & Broken Access Control):** El endpoint de acreditación debe validar el nivel de autorización en cada petición HTTP individual. El sistema debe denegar el acceso a cualquier participante que intente enviar una petición directa para modificar su propio estado de asistencia o el de un tercero, devolviendo un error de autorización estandarizado.
 ## 3. Requisitos Funcionales y Reglas de Negocio
 - **RF-02:** El sistema debe permitir la búsqueda de inscritos por ID de usuario o nombre.
 - **RN-03:** Solo se puede realizar la acreditación en la fecha de realización del evento establecida en la gestión del mismo.
@@ -23,6 +24,8 @@ Este módulo gestiona el registro de asistencia en tiempo real durante el evento
 - **Endpoints:** Implementar `/api/acreditacion/{eventoId}/{usuarioId}` usando el verbo PATCH o PUT para actualizar el estado de asistencia.
 - **Seguridad:** Acceso restringido mediante Spring Security. Solo usuarios con roles `ORGANIZADOR` o `STAFF` pueden ejecutar esta acción.
 - **Rendimiento:** La consulta de búsqueda de participantes debe estar indexada por DNI/ID para garantizar respuestas en milisegundos.
+- **Seguridad (Mitigación R3):** Interceptar el endpoint de actualización de asistencia mediante Spring Security aplicando `@PreAuthorize("hasAnyRole('ORGANIZADOR', 'STAFF')")`[cite: 4]. Toda solicitud que carezca del token JWT con el rol correspondiente debe ser bloqueada inmediatamente en el backend[cite: 4].
+- **Manejo de Errores de Seguridad:** En caso de accesos no autorizados, el componente `GlobalExceptionHandler` interceptará la excepción correspondiente y responderá obligatoriamente con un código de estado `HTTP 403 Forbidden`, evitando exponer detalles internos de la base de datos o de las trazas del servidor (Stack Traces).
 
 ## 5. Modelo de Datos
 Este módulo interactúa principalmente con la entidad `Inscripcion` definida en la spec anterior, añadiendo o actualizando:
