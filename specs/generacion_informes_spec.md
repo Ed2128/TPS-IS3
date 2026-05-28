@@ -14,17 +14,19 @@ Como participante o visitante público, quiero visualizar y descargar la agenda 
   * Si el evento es "Complejo", debe mostrar adicionalmente el cronograma desglosado por actividades (horarios y disertante por cada actividad).
   * Debe estar disponible para descarga en formato PDF sin requerir autenticación.
 
-### **HU2: Panel de Métricas del Evento**
-Como Organizador, quiero acceder a un *dashboard* con el informe del evento, para analizar su rendimiento general y la recepción del público.
+### **HU2: Panel de Métricas del Evento (Enriquecida - OWASP A01:2021)**
+Como Organizador, quiero acceder a un *dashboard* con el informe del evento, para analizar su rendimiento general y la recepción del público de forma segura.
 * **Criterios de Aceptación:**
-  * El sistema debe verificar el rol de "Organizador" del usuario solicitante.
+  * El sistema debe verificar el rol de "Organizador" del usuario solicitante mediante la validación del Token JWT.
+  * **Control de Acceso Basado en Datos (Anti-IDOR):** El sistema debe validar que el `userId` del Organizador extraído del token esté asociado explícitamente en la base de datos como administrador del `eventId` solicitado. Si no hay relación de pertenencia, se debe denegar el acceso.
   * El dashboard debe mostrar el nombre del evento, fecha, duración y una comparativa cuantitativa entre la cantidad de inscriptos y los efectivamente acreditados.
   * Debe incluir un resumen estadístico de las encuestas de satisfacción (ej. promedio de puntuaciones).
 
-### **HU3: Exportación del Informe de Rendimiento**
-Como Organizador, quiero descargar el informe consolidado en formato PDF, para tener un respaldo documental de las métricas del evento.
+### **HU3: Exportación del Informe de Rendimiento (Enriquecida - OWASP A05:2021)**
+Como Organizador, quiero descargar el informe consolidado en formato PDF, para tener un respaldo documental de las métricas del evento sin comprometer la disponibilidad del servidor.
 * **Criterios de Aceptación:**
   * El PDF generado debe contener toda la información de la HU2, maquetada de forma institucional.
+  * **Protección de Recursos (Rate Limiting):** El endpoint de descarga del PDF de rendimiento debe contar con una restricción de tasa de peticiones para mitigar sobrecargas por ráfagas maliciosas.
 
 ---
 
@@ -34,6 +36,8 @@ Como Organizador, quiero descargar el informe consolidado en formato PDF, para t
 * **RF2:** La generación del PDF de la agenda o del informe debe realizarse en el servidor mediante iText 7 y devolverse con `Content-Type: application/pdf`.
 * **RF3:** La agenda pública (simple o compleja) debe retornarse en formato JSON con estructura jerárquica. Para eventos complejos, agrupar actividades cronológicamente.
 * **RF4:** El endpoint de métricas debe retornar estadísticas calculadas mediante una única consulta JPQL optimizada con `JOIN`, evitando N+1 queries.
+* **RF5 (Seguridad - OWASP A01: Broken Access Control):** Validación de Relación de Dominio. El backend interceptará las peticiones dirigidas a los endpoints de reportes y comprobará que el identificador del usuario autenticado posea permisos directos de edición sobre la entidad del evento en cuestión antes de procesar los datos de negocio.
+* **RF6 (Seguridad - OWASP A05: Security Misconfiguration / DoS):** Control de Inundación de Recursos. Se implementará una política de Rate Limiting (ej. mediante la librería Bucket4j) en los endpoints de exportación de documentos PDF corporativos, restringiendo a un máximo de 5 solicitudes de descarga por minuto por usuario autenticado.
 * **RN1 (Privacidad de Métricas):** Los datos estadísticos (asistencia y encuestas) son de acceso restringido. Cualquier intento de acceso a los endpoints de informes por parte de un usuario sin permisos debe ser denegado.
 * **RN2 (Estructura de Eventos):** Un evento simple no requiere carga de actividades secundarias, mientras que un evento complejo requiere al menos una (1) actividad programada en su agenda.
 
@@ -43,10 +47,10 @@ Como Organizador, quiero descargar el informe consolidado en formato PDF, para t
 
 * **Arquitectura y Stack:** Desarrollo bajo patrón MVC/Capas con Spring Boot 3.x (Java 21). El frontend en Next.js consumirá la API para renderizar las vistas y los gráficos de métricas.
 * **DTOs y Proyección:** Uso estricto de DTOs (`AgendaPublicDTO`, `ReportMetricsDTO`). Para consultas complejas de métricas, se deben utilizar proyecciones JPA o consultas JPQL/Native optimizadas, evitando cargar entidades completas en memoria.
-* **Manejo de Errores:** Las violaciones de acceso (ej. un participante queriendo ver las métricas) deben lanzar una `UnauthorizedReportAccessException`, la cual será interceptada por el `GlobalExceptionHandler` devolviendo un HTTP 403.
-* **Validación de Entradas:** Los parámetros de búsqueda (como el ID del evento) en los Controladores deben estar validados con Bean Validation (`@NotNull`, `@Positive`).
+* **Manejo de Errores:** Las violaciones de acceso (ej. un participante queriendo ver las métricas o un organizador consultando un evento ajeno) deben lanzar una `UnauthorizedReportAccessException`, la cual será interceptada por el `GlobalExceptionHandler` devolviendo un HTTP 403 Forbidden bajo el estándar RFC 7807 (ProblemDetail).
+* **Validación de Entradas:** Los parámetros de búsqueda (como el ID del evento) en los Controladores deben estar validados con Bean Validation (`@NotNull`, `@Positive`, `@UUID`).
 * **Librerías de Exportación:** Se deberá utilizar **iText 7** (biblioteca `com.itextpdf:itext7-core`) para generación de PDFs con soporte para tablas, estilos y múltiples páginas. Configurar en `pom.xml` con versión ≥ 7.2.0.
-* **Seguridad en Descargas:** Los archivos PDF deben ser generados bajo demanda (streaming) sin almacenarlos en disco. Header: `Content-Disposition: attachment; filename=\"agenda_evento_{eventId}_{timestamp}.pdf\"`.
+* **Seguridad en Descargas y Sanitización de Salidas (OWASP A03:2021-Injection):** Los archivos PDF deben ser generados bajo demanda (streaming) sin almacenarlos en disco. Header: `Content-Disposition: attachment; filename=\"agenda_evento_{eventId}_{timestamp}.pdf\"`. Todos los campos de texto dinámicos procedentes de la base de datos (títulos, descripciones o respuestas textuales de encuestas) deben ser sanitizados previamente para evitar ataques de inyección de contenido en el motor de renderizado del documento.
 * **Documentación:** Swagger/OpenAPI debe documentar la estructura de los DTOs de respuesta y los tipos de contenido (`application/pdf`, `application/json`).
 
 ---
@@ -74,7 +78,7 @@ Las tablas seguirán la convención **plural** y **snake_case** en PostgreSQL. P
   * Índice compuesto: (`event_id`, `start_time`)
   * Índice simple: `speaker_id` para JOIN eficiente
 
-*(Nota: Las métricas de inscriptos, acreditados y encuestas se calculan a partir de uniones SQL `JOIN` y funciones de agregación `COUNT`, `AVG` sobre las tablas transaccionales definidas en specs anteriores, sin necesidad de persistirlas en tablas nuevas).*
+*(Nota: Las métricas de inscriptos, acreditados y encuestas se calculan a partir de uniones SQL `JOIN` y funciones de aggregación `COUNT`, `AVG` sobre las tablas transaccionales definidas en specs anteriores, sin necesidad de persistirlas en tablas nuevas).*
 
 ---
 
@@ -110,9 +114,9 @@ Las tablas seguirán la convención **plural** y **snake_case** en PostgreSQL. P
     ```
   * Respuesta PDF (200 OK, format=pdf): `Content-Type: application/pdf` con agenda maquetada
 
-### Métricas del Evento (Solo Organizadores)
+### Métricas del Evento (Solo Organizadores Autorizados - OWASP A01)
 * **GET** `/api/v1/events/{eventId}/report`
-  * Requiere: Token JWT, rol ORGANIZADOR vinculado al evento
+  * Requiere: Token JWT, rol ORGANIZADOR asociado explícitamente como dueño/gestor de dicho evento en BD.
   * Respuesta (200 OK):
     ```json
     {
@@ -142,10 +146,11 @@ Las tablas seguirán la convención **plural** y **snake_case** en PostgreSQL. P
       "generatedAt": "2026-05-16T14:30:00Z"
     }
     ```
-  * Excepciones: `403 Forbidden` (sin rol), `404 Not Found` (evento inexistente)
+  * Excepciones: `403 Forbidden` (sin rol u organizador no vinculado al recurso), `404 Not Found` (evento inexistente)
 
+### Exportación de Informes Protegida (Solo Organizadores Autorizados - OWASP A05)
 * **GET** `/api/v1/events/{eventId}/report/pdf`
-  * Requiere: Token JWT, rol ORGANIZADOR
+  * Requiere: Token JWT, rol ORGANIZADOR vinculado al evento. Aplica control de cuotas Bucket4j.
   * Respuesta: PDF descargable con informe completo (200 OK)
   * Header: `Content-Disposition: attachment; filename="informe_evento_{eventId}_{fecha}.pdf"`
 
@@ -189,140 +194,44 @@ Las tablas seguirán la convención **plural** y **snake_case** en PostgreSQL. P
      * Consultar `events` y `activities` con JOINs optimizados
    * Crear `ReportService`:
      * Método `getEventMetrics(UUID eventId, UUID organizerId)` → Valida permisos y retorna `ReportMetricsDTO`
-     * Verifica que organizador esté vinculado al evento
+     * **Validación Cruzada Anti-IDOR:** Comprueba en base de datos la relación explícita entre el `organizerId` solicitante y el `eventId`.
      * Ejecuta consultas JPQL para calcular: inscritos, acreditados, tasas, promedio encuestas
      * Calcula distribución de respuestas por pregunta (histograma)
      * Calcula `responseRate = (respuestasRecibidas / inscritos) * 100`
    * Crear `PdfGeneratorService`:
      * Método `generateAgendaPDF(AgendaPublicDTO)` → retorna `byte[]`
      * Método `generateReportPDF(ReportMetricsDTO)` → retorna `byte[]`
-     * Utiliza iText 7 para:
-       * Agenda: Tabla con actividades, estilos corporativos, header/footer
-       * Informe: Portada, tabla de métricas, tablas de distribución de encuestas
+     * Utiliza iText 7 aplicando **sanitización estricta de cadenas de caracteres** contra ataques de inyección.
 
-5. **Controladores con OpenAPI:**
-   * `AgendaController`:
-     * `GET /api/v1/events/{eventId}/agenda` (público)
-     * Parámetro query `format` con valores `json` (default), `pdf`
-     * Responde según formato: `application/json` o `application/pdf`
-   * `ReportController`:
-     * `GET /api/v1/events/{eventId}/report` (privado)
-     * `GET /api/v1/events/{eventId}/report/pdf` (privado)
-     * Inyecta `@RequestAttribute("userId")` y `@RequestAttribute("roles")` del contexto de seguridad
-     * Documentar con `@Operation`, `@ApiResponses`, `@Parameter`
-     * Validar con `@PathVariable @Positive UUID eventId`
-
-6. **Generación de PDFs con iText 7:**
-   * Dependencia: `com.itextpdf:itext7-core:7.2.0+`
-   * Clase `PdfGenerator`:
-     * `generateAgendaPDF(AgendaPublicDTO)`:
-       * Header: Nombre evento, fecha
-       * Body: Tabla de actividades (title, horario, disertante, duración)
-       * Footer: Página N de M, fecha de generación
-       * Márgenes: 1cm, fuente Arial 11pt, tablas con bordes
-     * `generateReportPDF(ReportMetricsDTO)`:
-       * Página 1: Portada con nombre evento, fecha, organizadores
-       * Página 2: Tabla de asistencia (inscritos, acreditados, tasas)
-       * Página 3+: Tabla de encuestas con distribución por pregunta, promedios
-       * Footer: Documento confidencial, fecha generación
-
-7. **Manejo de Excepciones:**
-   * Crear excepciones personalizadas en `com.sgea.exception`:
-     * `UnauthorizedReportAccessException` (rol no autorizado)
-     * `EventNotFoundException` (evento no existe)
-     * `NoActivitiesDefinedException` (evento complejo sin actividades)
-   * Actualizar `GlobalExceptionHandler` para mapear a RFC 7807 (ProblemDetail)
-
-8. **Frontend Next.js:**
-   * Página `/events/[eventId]/agenda` (pública):
-     * Componente `AgendaDisplay`: Renderizar tabla de actividades con horarios, disertantes
-     * Botón "Descargar Agenda (PDF)" con ícono de descarga
-     * Mostrar disertantes con avatar, nombre y rol
-     * Responsive design para móvil y escritorio
-   * Página `/dashboard/events/[eventId]/report` (protegida):
-     * Middleware: Verificar rol ORGANIZADOR antes de renderizar
-     * Componentes:
-       * `AttendanceCard`: Tarjeta con números (inscritos vs acreditados), tasas en porcentaje, colores distintivos
-       * `SurveyMetricsCard`: Promedio de satisfacción con icono de estrella (4.2/5.0)
-       * `SatisfactionChart`: Gráfico de barras/pastel para distribución de respuestas (usar `recharts` o `chart.js`)
-       * `ResponseRateMetric`: Porcentaje de respuestas recibidas
-       * `QuestionBreakdownTable`: Tabla con desglose de respuestas por pregunta
-       * `DownloadReportButton`: Botón para descargar PDF del informe
-     * Estados React: `loading`, `error`, `success` con notificaciones toast
-     * Polling con `useEffect` para actualizar cada 30 segundos (opcional)
+5. **Controladores con OpenAPI e Interceptores de Seguridad:**
+   * `AgendaController`: Endpoint público para formatos JSON/PDF.
+   * `ReportController`: Manejo de endpoints privados inyectando `@RequestAttribute("userId")`. Integra el filtro/interceptor de control de tasa (Rate Limiting) de Spring Boot para bloquear ráfagas abusivas sobre solicitudes binarias (.pdf).
 
 ---
 
 ## 7. Estrategia de Verificación Detallada
 
 ### Pruebas Unitarias (JUnit 5 + Mockito)
-* **Test 1 - Cálculo de Tasa de Asistencia:**
-  * Setup: Mock repositorio con 50 inscriptos, 25 acreditados
-  * Ejecución: `reportService.calculateAttendanceRate(50, 25)`
-  * Assert: Retorna `50.0` exactamente, `noShowRate == 50.0`
-* **Test 2 - Promedio de Encuestas:**
-  * Setup: Respuestas de encuesta con escala 1-5: {2, 3, 4, 4, 5}
-  * Ejecución: `reportService.calculateAverageSatisfaction(respuestas)`
-  * Assert: Retorna `3.6` con dos decimales
-* **Test 3 - Diferenciación Evento Simple vs Complejo:**
-  * Setup: Event(isComplex=false) y Event(isComplex=true) con 3 actividades
-  * Ejecución: `agendaService.getPublicAgenda(eventSimple)` vs `getPublicAgenda(eventComplejo)`
-  * Assert: Simple retorna `activities.isEmpty()`, Complejo retorna `size() == 3`
-* **Test 4 - Ordenamiento de Actividades:**
-  * Setup: 3 actividades con `sequence_order: 3, 1, 2`
-  * Assert: Lista retornada está ordenada `[1, 2, 3]`
+* **Test 1 - Cálculo de Tasa de Asistencia:** Mock con 50 inscriptos, 25 acreditados. Retorna `50.0` exactamente, `noShowRate == 50.0`.
+* **Test 2 - Promedio de Encuestas:** Respuestas de encuesta con escala 1-5: {2, 3, 4, 4, 5}. Retorna `3.6` con dos decimales.
+* **Test 3 - Diferenciación Evento Simple vs Complejo:** Comprueba bifurcación de lógica según bandera `isComplex`.
+* **Test 4 - Ordenamiento de Actividades:** 3 actividades con `sequence_order: 3, 1, 2` son devueltas en orden `[1, 2, 3]`.
 
-### Pruebas de Seguridad (Spring Security Test + @WithMockUser)
-* **Test 1 - RBAC: Acceso No Autorizado:**
-  * Setup: Usuario con rol PARTICIPANTE
-  * Request: GET `/api/v1/events/{eventId}/report`
-  * Assert: Status `403 Forbidden`, body contiene `"type": "about:blank/http-exception"`
-* **Test 2 - RBAC: Acceso Autorizado:**
-  * Setup: Usuario ORGANIZADOR del evento
-  * Request: GET `/api/v1/events/{eventId}/report`
-  * Assert: Status `200 OK`, JSON retorna `ReportMetricsDTO` con todos los campos
-* **Test 3 - Público Sin Autenticación:**
-  * Request: GET `/api/v1/events/{eventId}/agenda` sin token
-  * Assert: Status `200 OK`, retorna `AgendaPublicDTO` (sin necesidad de login)
-* **Test 4 - PDF Restringuido a Organizador:**
-  * Setup: Usuario PARTICIPANTE
-  * Request: GET `/api/v1/events/{eventId}/report/pdf`
-  * Assert: Status `403 Forbidden`
+### Pruebas de Seguridad (Spring Security Test + OWASP Verification)
+* **Test 1 - RBAC: Acceso No Autorizado:** Usuario con rol PARTICIPANTE. Request: GET `/api/v1/events/{eventId}/report`. Assert: Status `403 Forbidden`.
+* **Test 2 - RBAC: Acceso Autorizado:** Usuario ORGANIZADOR del evento correspondiente. Request: GET `/api/v1/events/{eventId}/report`. Assert: Status `200 OK`.
+* **Test 3 - Público Sin Autenticación:** Request a endpoint de agenda sin cabecera Authorization. Assert: Status `200 OK`.
+* **Test 4 - PDF Restringido a Organizador:** Usuario PARTICIPANTE solicita PDF de reportes. Assert: Status `403 Forbidden`.
+* **Test 5 - Prevención de IDOR (OWASP A01):**
+  * Setup: Usuario autenticado con rol `ORGANIZADOR` asociado a un "Evento A".
+  * Request: GET `/api/v1/events/{evento_B}/report` (intento de acceso de lectura a datos de un evento ajeno).
+  * Assert: Status `403 Forbidden` (La validación de dominio del backend detecta la incompatibilidad e interrumpe el flujo).
+* **Test 6 - Mitigación DoS por Inundación (OWASP A05):**
+  * Setup: Realizar 6 peticiones consecutivas al endpoint `/api/v1/events/{eventId}/report/pdf` en menos de un minuto usando las mismas credenciales.
+  * Assert: Las primeras 5 peticiones devuelven `200 OK`, la sexta petición retorna de inmediato un Status `429 Too Many Requests`.
 
 ### Pruebas de Integración (Spring Boot Test + TestContainers PostgreSQL)
-* **Test 1 - Endpoint Agenda JSON:**
-  * Setup: BD real con evento + 2 actividades via Flyway/fixture
-  * Request: GET `/api/v1/events/{eventId}/agenda?format=json`
-  * Assert: Status `200 OK`, JSON parseable, `activities.length == 2`, ordenadas por `sequence_order`, `totalDurationMinutes` correcto
-* **Test 2 - Endpoint Agenda PDF:**
-  * Request: GET `/api/v1/events/{eventId}/agenda?format=pdf`
-  * Assert: Status `200 OK`, `Content-Type: application/pdf`, header HTTP contiene `%PDF-1.4` (primeros bytes)
-* **Test 3 - Endpoint Métricas con Datos Reales:**
-  * Setup: 100 inscripciones, 70 marcadas como acreditadas, 50 respuestas de encuesta
-  * Request: GET `/api/v1/events/{eventId}/report`
-  * Assert: `attendanceMetrics.totalRegistered == 100`, `totalAccredited == 70`, `attendanceRate == 70.0`, `noShowRate == 30.0`
-* **Test 4 - Generación de PDF de Informe:**
-  * Request: GET `/api/v1/events/{eventId}/report/pdf`
-  * Assert: Status `200 OK`, `Content-Type: application/pdf`, verificar que archivo contiene tabla de métricas (parsear con iText API)
-* **Test 5 - Validación de Parámetros:**
-  * Request: GET `/api/v1/events/invalid-uuid/agenda`
-  * Assert: Status `400 Bad Request` (UUID inválido)
+* Cobertura completa sobre parseo JSON/PDF y mapeo de excepciones personalizadas bajo estándar RFC 7807.
 
 ### Pruebas de Frontend (Playwright)
-* **Test 1 - Página Pública de Agenda:**
-  * Navegar a `/events/{eventId}/agenda`
-  * Assert: Título del evento visible, tabla con actividades (horarios, disertantes), botón "Descargar PDF" presente
-  * Acción: Click en botón descarga → archivo PDF se descarga sin errores
-* **Test 2 - Panel de Métricas (Solo Organizador):**
-  * Login como Organizador, navegar a `/dashboard/events/{eventId}/report`
-  * Assert: Tarjeta de asistencia muestra: "150 inscritos", "120 acreditados", "80%"
-  * Assert: Gráfico de encuestas renderiza (canvas visible), promedio de satisfacción: "4.2 / 5.0"
-* **Test 3 - Acceso Denegado (Participante):**
-  * Login como Participante, intentar navegar a `/dashboard/events/{eventId}/report`
-  * Assert: Redirige a `/403` o página de acceso denegado con mensaje
-* **Test 4 - Descarga de PDF Funcional:**
-  * Click en "Descargar Informe (PDF)"
-  * Assert: Archivo descargado con nombre `informe_evento_{eventId}_{timestamp}.pdf`, contiene tablas de métricas
-* **Test 5 - Responsividad:**
-  * Viewport mobile (375px), verificar que tabla de actividades es scrollable horizontalmente
-  * Viewport desktop (1920px), verificar que tabla se renderiza completa
+* Verificación de responsividad móvil, estados React ante errores 403/429 y renderizado de gráficos estadísticos.
