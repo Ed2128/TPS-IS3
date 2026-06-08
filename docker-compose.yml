@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Servicio 1: La Aplicación Backend
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: sgea_backend_dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app # Sincroniza tu código local con el contenedor
+    depends_on:
+      - db
+    networks:
+      - sgea_network
+
+  # Servicio 2: Persistencia (Base de Datos PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    container_name: sgea_postgres_dev
+    environment:
+      POSTGRES_DB: sgea_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - sgea_network
+
+networks:
+  sgea_network:
+    driver: bridge
+
+volumes:
+  pgdata:
